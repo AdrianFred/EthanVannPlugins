@@ -24,6 +24,9 @@ dependencies {
     implementation 'org.json:json:20230227'
     implementation 'org.roaringbitmap:RoaringBitmap:0.9.44'
     implementation("org.benf:cfr:0.152")
+    implementation 'org.pf4j:pf4j:3.10.0' // Or the latest version
+    implementation 'org.slf4j:slf4j-api:2.0.9' // match version with your project if needed
+    runtimeOnly 'ch.qos.logback:logback-classic:1.4.11'
 }
 sourceSets {
     main {
