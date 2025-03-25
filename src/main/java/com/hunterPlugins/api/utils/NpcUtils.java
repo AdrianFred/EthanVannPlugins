@@ -30,6 +30,11 @@ public class NpcUtils
         return NPCs.search().nameContains(name).nearestToPlayer().orElse(null);
     }
 
+    public static NPC getNearestAttackableNpc(String name)
+    {
+        return NPCs.search().nameContains(name).walkable().playerNotInteractingWith().nearestToPlayer().orElse(null);
+    }
+
     public static NPC getNearestNpc(int id)
     {
         return NPCs.search().withId(id).nearestToPlayer().orElse(null);

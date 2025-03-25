@@ -128,7 +128,7 @@ public class AttackGoblinHotkeyPlugin extends Plugin implements KeyListener {
             return null;
         }
 
-        return NpcUtils.getNearestNpc("Goblin");
+        return NpcUtils.getNearestAttackableNpc("Goblin");
 
 
     }
