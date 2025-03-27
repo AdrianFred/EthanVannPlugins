@@ -44,7 +44,7 @@ public class AttackGoblinHotkeyPlugin extends Plugin implements KeyListener {
     private KeyManager keyManager;
 
     private boolean isGoblinAttackActive = false;
-
+    
     @Provides
     AttackGoblinHotkeyConfig provideConfig(ConfigManager configManager) {
         return configManager.getConfig(AttackGoblinHotkeyConfig.class);
@@ -104,7 +104,7 @@ public class AttackGoblinHotkeyPlugin extends Plugin implements KeyListener {
 
     public boolean interactNpc(NPC npc, String action) {
         if (npc == null) return false;
-        return NPCInteraction.interact(npc, new String[] {action});
+        return NPCInteraction.interact(npc, new String[]{action});
     }
 
     public boolean interactNpc(String npcName, String action, Predicate<NPC> condition) {
