@@ -3,44 +3,33 @@ package com.hunterPlugins.ItemDropper;
 import com.example.EthanApiPlugin.Collections.Inventory;
 import com.example.InteractionApi.InventoryInteraction;
 import com.google.inject.Inject;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import com.google.inject.Provides;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
-import net.runelite.client.config.Keybind;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
-import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.util.HotkeyListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
+@Slf4j
 @PluginDescriptor(
-        name = "<html><font color=\"#FF9DF9\">[PP]</font> Item Dropper by Hunter</html>",
+        name = "<html><font color=\"#7ecbf2\">[Hu]</font> Item Dropper</html>",
         description = "Automatically drops items on hotkey pressed or if the inventory is full",
-        tags = {"ethan", "hunter"}
+        tags = {"ethan", "HunterNo"}
 )
 public class ItemDropperPlugin extends Plugin {
-
-    private static final Logger log = LoggerFactory.getLogger(ItemDropperPlugin.class);
-
-    @Inject
-    private ItemDropperConfig config;
-
-    @Inject
-    private KeyManager keyManager;
-
-    @Inject
-    private ClientThread clientThread;
-
+    @Inject private ItemDropperConfig config;
+    @Inject private KeyManager keyManager;
+    @Inject private ClientThread clientThread;
     private final List<Integer> itemIds = new ArrayList<>();
     private final List<String> itemNames = new ArrayList<>();
     private final ConcurrentLinkedQueue<Widget> itemsToDrop = new ConcurrentLinkedQueue<>();
@@ -51,90 +40,91 @@ public class ItemDropperPlugin extends Plugin {
         return configManager.getConfig(ItemDropperConfig.class);
     }
 
+    @Override
     protected void startUp() {
-        this.keyManager.registerKeyListener(this.dropItemsHotkey);
-        this.itemsToDrop.clear();
-        this.itemNames.clear();
-        this.dropping = false;
+        keyManager.registerKeyListener(dropItemsHotkey);
+        itemsToDrop.clear();
+        itemNames.clear();
+        dropping = false;
         updateItemIds();
     }
 
+    @Override
     protected void shutDown() {
-        this.dropping = false;
-        this.keyManager.unregisterKeyListener(this.dropItemsHotkey);
+        dropping = false;
+        keyManager.unregisterKeyListener(dropItemsHotkey);
     }
 
     @Subscribe
     private void onConfigChanged(ConfigChanged configChanged) {
-        if (!configChanged.getGroup().equals("itemdropper")) return;
+        if (!configChanged.getGroup().equals(config.GROUP)) return;
         if (!configChanged.getKey().equals("itemIds")) return;
         updateItemIds();
     }
 
     @Subscribe
     private void onGameTick(GameTick gameTick) {
-        if (!this.dropping && this.config.dropIfInvFull() && Inventory.full()) {
+        if (!dropping && config.dropIfInvFull() && Inventory.full()) {
             buildItemQueue();
-            this.dropping = true;
+            dropping = true;
         }
 
-        if (this.dropping) {
+        if (dropping) {
             dropItems();
         }
     }
 
-    private final HotkeyListener dropItemsHotkey = new HotkeyListener(() -> this.config.getHotkey()) {
+    private final HotkeyListener dropItemsHotkey = new HotkeyListener(() -> config.getHotkey()) {
+        @Override
         public void hotkeyPressed() {
-            if (ItemDropperPlugin.this.dropping) return;
-            ItemDropperPlugin.this.clientThread.invoke(() -> {
-                ItemDropperPlugin.this.buildItemQueue();
-                ItemDropperPlugin.this.dropping = true;
+            if (dropping) return;
+            clientThread.invoke(() -> {
+                buildItemQueue();
+                dropping = true;
             });
         }
     };
 
     private void buildItemQueue() {
-        this.itemsToDrop.clear();
-        this.itemsToDrop.addAll(Inventory.search().idInList(this.itemIds).result());
-        for (String name : this.itemNames) {
-            this.itemsToDrop.addAll(
-                    Inventory.search().matchesWildCardNoCase(name)
-                            .filter(w -> !this.itemsToDrop.contains(w))
-                            .result()
-            );
+        itemsToDrop.clear();
+        itemsToDrop.addAll(Inventory.search().idInList(itemIds).result());
+        for (String name : itemNames) {
+            itemsToDrop.addAll(Inventory.search().matchesWildCardNoCase(name).filter(w -> !itemsToDrop.contains(w)).result());
         }
     }
 
     private void updateItemIds() {
-        if (this.config.itemIdsOrNames().trim().isEmpty()) {
-            this.itemIds.clear();
-            this.itemNames.clear();
+        if (config.itemIdsOrNames().trim().isEmpty()) {
+            itemIds.clear();
+            itemNames.clear();
             return;
         }
-        String[] parts = this.config.itemIdsOrNames().trim().split(", |,");
+        var parts = config.itemIdsOrNames().trim().split(", |,");
         for (String part : parts) {
             try {
                 int id = Integer.parseInt(part.trim());
-                this.itemIds.add(id);
-            } catch (NumberFormatException ignored) {
-                this.itemNames.add(part.trim());
+                itemIds.add(id);
+            }
+            catch (NumberFormatException ignored) {
+                itemNames.add(part.trim());
             }
         }
     }
 
     private void dropItems() {
-        int numOfItems = getRandomIntBetweenRange(2, this.config.maxPerTick());
+        int numOfItems = getRandomIntBetweenRange(2, config.maxPerTick());
         for (int i = 0; i < numOfItems; i++) {
-            if (this.itemsToDrop.peek() == null) {
-                this.dropping = false;
+            if (itemsToDrop.peek() == null) {
+                dropping = false;
                 return;
             }
-            InventoryInteraction.useItem(this.itemsToDrop.poll(), new String[]{"Drop"});
+            InventoryInteraction.useItem(itemsToDrop.poll(), "Drop");
         }
-        if (this.itemsToDrop.isEmpty()) this.dropping = false;
+        if (itemsToDrop.isEmpty()) dropping = false;
     }
 
     public int getRandomIntBetweenRange(int min, int max) {
-        return (int) (Math.random() * (max - min + 1) + min);
+        return (int) ((Math.random() * ((max - min) + 1)) + min);
     }
 }
+
