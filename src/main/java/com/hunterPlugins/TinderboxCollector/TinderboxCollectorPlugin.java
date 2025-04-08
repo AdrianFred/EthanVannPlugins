@@ -2,18 +2,24 @@ package com.hunterPlugins.TinderboxCollector;
 
 import com.example.EthanApiPlugin.Collections.Bank;
 import com.example.EthanApiPlugin.Collections.Inventory;
-import com.example.EthanApiPlugin.Collections.NPCs;
+import com.example.EthanApiPlugin.Collections.TileItems;
+import com.example.EthanApiPlugin.Collections.TileObjects;
+import com.example.EthanApiPlugin.Collections.query.TileObjectQuery;
 import com.example.EthanApiPlugin.EthanApiPlugin;
+import com.example.InteractionApi.InventoryInteraction;
+import com.example.InteractionApi.TileObjectInteraction;
 import com.example.Packets.MousePackets;
 import com.example.Packets.MovementPackets;
-import com.example.Packets.NPCPackets;
 import com.example.Packets.WidgetPackets;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
-import com.hunterPlugins.PiggyUtils.API.InventoryUtil;
-import com.hunterPlugins.PiggyUtils.API.MathUtil;
 import com.hunterPlugins.api.utils.GameObjectUtils;
+import com.hunterPlugins.api.utils.InteractionUtils;
+import com.hunterPlugins.api.utils.InventoryUtils;
 import com.hunterPlugins.api.utils.MessageUtils;
+import java.awt.*;
+
+import lombok.extern.java.Log;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
@@ -26,9 +32,6 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
-import java.awt.*;
-import java.util.Optional;
-
 @PluginDescriptor(
         name = "<html><font color=\"#7ecbf2\">[Hu]</font>Collect Tinderbox</html>",
         description = "Plugin to collect tinderboxes",
@@ -38,14 +41,11 @@ import java.util.Optional;
 @Slf4j
 public class TinderboxCollectorPlugin extends Plugin {
 
-    @Inject
-    private Client client;
+    @Inject private Client client;
 
-    @Inject
-    private TinderboxCollectorConfig config;
+    @Inject private TinderboxCollectorConfig config;
 
-    @Inject
-    private ClientThread clientThread;
+    @Inject private ClientThread clientThread;
 
     @Provides
     private TinderboxCollectorConfig getConfig(ConfigManager configManager) {
@@ -53,10 +53,8 @@ public class TinderboxCollectorPlugin extends Plugin {
     }
 
     public int timeout = 0;
-    private int stuckTicks = 0;
-    private int lastX = -1, lastY = -1;
-    private NPC currentBanker = null;
-    private boolean hasReachedBankTile = false;
+    private boolean hasReachedTinderboxTile = false;
+    private boolean pickingUpTinderboxes = false;
 
     @Override
     protected void startUp() throws Exception {
@@ -67,13 +65,19 @@ public class TinderboxCollectorPlugin extends Plugin {
     @Override
     protected void shutDown() throws Exception {
         timeout = 0;
-        hasReachedBankTile = false;
+        hasReachedTinderboxTile = false;
+        pickingUpTinderboxes = false;
         MessageUtils.addMessage("Tinderbox stopped", Color.red);
     }
 
     @Subscribe
     private void onGameTick(GameTick gameTick) {
-        if (client.getGameState() != GameState.LOGGED_IN || !config.toggle() || EthanApiPlugin.isMoving() || client.getLocalPlayer().getAnimation() != -1) {
+        if (
+                client.getGameState() != GameState.LOGGED_IN ||
+                        !config.toggle() ||
+                        EthanApiPlugin.isMoving() ||
+                        client.getLocalPlayer().getAnimation() != -1
+        ) {
             return;
         }
 
@@ -85,60 +89,95 @@ public class TinderboxCollectorPlugin extends Plugin {
         // Only care about door at 3088, 3251, 0
         WorldPoint doorTile = new WorldPoint(3088, 3251, 0);
         TileObject door = GameObjectUtils.nearest("Door");
-        if (door != null && door.getWorldLocation().equals(doorTile) && GameObjectUtils.hasAction(door.getId(), "Open")) {
+        if (
+                door != null &&
+                        door.getWorldLocation().equals(doorTile) &&
+                        GameObjectUtils.hasAction(door.getId(), "Open")
+        ) {
             GameObjectUtils.interact(door, "Open");
             MessageUtils.addMessage("Opening door at 3088, 3251, 0", Color.RED);
             return;
         }
 
+        // Banking Logic (If Inventory is Full)
         if (Inventory.full()) {
+            pickingUpTinderboxes = false;
             if (!Bank.isOpen()) {
-                WorldPoint bankTile = new WorldPoint(3093, 3245, 0);
-                WorldPoint playerLocation = client.getLocalPlayer().getWorldLocation();
-
-                if (!hasReachedBankTile) {
-                    if (playerLocation.distanceTo(bankTile) > 1) {
-                        MovementPackets.queueMovement(bankTile);
-                        MessageUtils.addMessage("Walking to bank area before searching banker...", Color.CYAN);
-
-                        int currentX = playerLocation.getX();
-                        int currentY = playerLocation.getY();
-                        if (currentX == lastX && currentY == lastY) {
-                            stuckTicks++;
-                        } else {
-                            stuckTicks = 0;
-                        }
-                        lastX = currentX;
-                        lastY = currentY;
-
-                        if (stuckTicks >= 4) {
-                            MessageUtils.addMessage("Can't reach bank tile. Maybe blocked?", Color.RED);
-                            stuckTicks = 0;
-                            timeout = 3;
-                        }
-                        return;
-                    } else {
-                        hasReachedBankTile = true;
-                    }
+                TileObject closestBank = GameObjectUtils.nearest("Bank booth");
+                MessageUtils.addMessage("hello bank", Color.BLUE);
+                if (closestBank != null) {
+                    MessageUtils.addMessage("Bank found", Color.gray);
+                    GameObjectUtils.interact(closestBank, "Bank");
                 }
-
-                if (hasReachedBankTile) {
-                    if (currentBanker == null || !currentBanker.getName().contains("Banker")) {
-                        currentBanker = NPCs.search().nameContains("Banker").withAction("Bank").nearestToPlayer().orElse(null);
-                    }
-
-                    if (currentBanker != null) {
-                        MousePackets.queueClickPacket();
-                        NPCPackets.queueNPCAction(currentBanker, "Bank");
-                        timeout = MathUtil.random(1, 3);
-                        stuckTicks = 0;
-                        return;
-                    } else {
-                        MessageUtils.addMessage("No banker found nearby.", Color.RED);
-                    }
-                }
-            } else if (Inventory.getEmptySlots() < 28) {
+            } else if (Inventory.getEmptySlots() < 27) {
                 depositInventory();
+            }
+            return; // Important:  Exit after banking logic
+        }
+
+        //Logic when the inventory is not full and we need to get tinderboxes
+        if (!hasReachedTinderboxTile) {
+            WorldPoint tileToStand = new WorldPoint(3091, 3254, 0);
+            if (client.getLocalPlayer().getWorldLocation().distanceTo(tileToStand) > 2) {
+                MovementPackets.queueMovement(tileToStand);
+                MessageUtils.addMessage("Walking to pick tile", Color.RED);
+                return; // Wait for movement
+            } else {
+                hasReachedTinderboxTile = true;
+            }
+        }
+
+        if (hasReachedTinderboxTile) {
+            // Check if there are 28 tinderboxes on the ground and we are not
+            // already picking them up
+            var tinderboxesOnGround =
+                    TileItems.search().nameContains("Tinderbox").result().size();
+            MessageUtils.addMessage(String.valueOf(tinderboxesOnGround), Color.BLUE);
+            if (tinderboxesOnGround == 28 && !pickingUpTinderboxes) {
+                pickingUpTinderboxes = true; // Set the flag
+            }
+
+            if (pickingUpTinderboxes) {
+                //Pickup items
+                WorldPoint tileToStand = new WorldPoint(3091, 3254, 0);
+                var groundTinderbox =
+                        TileObjects
+                                .search()
+                                .atLocation(tileToStand).nameContains("Tinderbox");
+                log.info(groundTinderbox.toString());
+
+                if (groundTinderbox != null) {
+                    InteractionUtils.interactWithTileItem("Tinderbox", "Take");
+
+
+                    MessageUtils.addMessage("Picking up tinderbox from ground", Color.RED);
+                    return; // Wait for the interaction
+                } else {
+                    pickingUpTinderboxes = false; // No more tinderboxes to pick up
+                    MessageUtils.addMessage("Finished picking up tinderboxes", Color.RED);
+                }
+            } else {
+                // Inventory is not full and not picking up from ground, so get from
+                // shelf
+                if (Inventory.getEmptySlots() == 28) {
+                    MessageUtils.addMessage("Inventory is emptyyy", Color.BLUE);
+                }
+                TileObject shelf = GameObjectUtils.nearest(7079);
+                if (shelf != null) {
+                    GameObjectUtils.interact(shelf, "Search");
+                    MessageUtils.addMessage("Taking Tinderbox from shelf", Color.RED);
+                } else {
+                    MessageUtils.addMessage("No Tinderbox shelf found", Color.RED);
+                }
+
+                // Drop non tinderbox items
+                var item = InventoryUtils.getFirstItem("Tinderbox");
+                if (item != null) {
+                    MessageUtils.addMessage("Tinderbox found, dropping", Color.RED);
+                    InventoryInteraction.useItem(item.getId(), "Drop");
+                } else {
+                    MessageUtils.addMessage("No Tinderbox to drop found", Color.RED);
+                }
             }
         }
     }
